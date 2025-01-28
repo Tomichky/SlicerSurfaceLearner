@@ -1,7 +1,7 @@
 import logging
 import os.path
 from argparse import ArgumentParser
-
+import os 
 import pytorch_lightning as pl
 import torch
 import torch.nn
@@ -52,6 +52,9 @@ def cli_main(args):
     # -----------
     # Data
     # -----------
+
+    save_args_to_file(args, args["write_dir"])
+
     if args["n_folds"] == 1:
         print("batch_size",args["batch_size"])
         data_modules = [
@@ -175,18 +178,28 @@ def cli_main(args):
             print(f"Progress bar reset for fold {i}.")
     print(f"Finished Training!")
 
+def save_args_to_file(args, write_dir):
+    os.makedirs(write_dir, exist_ok=True)
+    
+    args_file_path = os.path.join(write_dir, "args.txt")
+    with open(args_file_path, 'w') as f:
+        for key, value in args.items():
+            f.write(f"{key}: {value}\n")
+    print(f"Arguments saved to {args_file_path}")
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument('--batch_size', default=1, type=int)
+    parser.add_argument('--batch_size', default=7, type=int)
     parser.add_argument('--learning_rate', type=float, default=0.0001)
-    parser.add_argument('--in_channels', type=int, default=2)
+    parser.add_argument('--in_channels', type=int, default=12)
     parser.add_argument('--num_classes', type=int, default=2)
-    parser.add_argument('--max_epochs', type=int, default=1)
-    parser.add_argument('--data_workers', type=int, default=4)
+    parser.add_argument('--max_epochs', type=int, default=300)
+    parser.add_argument('--data_workers', type=int, default=32)
     parser.add_argument('--model', type=str, default="simple_cnn")
     parser.add_argument('--use_gpu', type=bool, default=False)
-    parser.add_argument('--n_folds', type=int, default=9)
-    parser.add_argument('--write_dir', type=str, default="/work/bigo/data/training_test_test_4")
+    parser.add_argument('--n_folds', type=int, default=13)
+    parser.add_argument('--write_dir', type=str, default="/work/bigo/data/training_right_left_27_01_sa_V06_both")
     parser.add_argument('--exp_name', type=str, default="Test")
     parser.add_argument('--cp_n_epoch', type=int, default=1)
     parser.add_argument('--maxCp', type=int, default=2)
@@ -197,7 +210,7 @@ if __name__ == "__main__":
     args = vars(parser.parse_args())
     DEFAULT_FILE_PATHS = {}
     DEFAULT_FILE_PATHS["TRAIN_DATA_DIR"] = "/NIRAL/work/bigo/data/Non_normalized"
-    DEFAULT_FILE_PATHS["FEATURE_DIRS"] = ["eacsf"]
+    DEFAULT_FILE_PATHS["FEATURE_DIRS"] = ["sa"]
     DEFAULT_FILE_PATHS["TIME_POINTS"] = ["V06"]
     DEFAULT_FILE_PATHS["FILE_SUFFIX"] = ["_flat", "_flat"]
     DEFAULT_FILE_PATHS["FILE_EXT"] = ".png"
@@ -208,6 +221,12 @@ if __name__ == "__main__":
     args["w"] = 512
     
     args["side"]="both"
+
+    if args["side"]=="left" or args["side"]=="right":
+        args["in_channels"]=len(DEFAULT_FILE_PATHS["TIME_POINTS"])*len(DEFAULT_FILE_PATHS["FEATURE_DIRS"])
+    else:
+        args["in_channels"]=len(DEFAULT_FILE_PATHS["TIME_POINTS"])*len(DEFAULT_FILE_PATHS["FEATURE_DIRS"])*2
+
     args["qtProgressBarObject"] = None  
     print(args)
     cli_main(args)
