@@ -72,32 +72,85 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
 
+    def browseFile(self):
+        file_dialog = qt.QFileDialog()
+        
+        file_path = file_dialog.getOpenFileName(self.uiWidget, "Select a CSV file", "", "CSV Files (*.csv);;All Files (*)")
+        
+       
+        if isinstance(file_path, tuple):  
+            file_path = file_path[0]
+        
+        
+        if file_path:
+            self.filePathLineEdit.setText(file_path)
+
+
     def modifyUI(self):
         self.connect_collapsible_button = ctk.ctkCollapsibleButton()
-        # self.connect_collapsible_button = self.ui.inputsCollapsibleButton
         self.connect_collapsible_button.text = 'Input'
         self.connect_form_layout = qt.QGridLayout(self.connect_collapsible_button)
-        # self.connect_form_layout.setColumnStretch(0, 1)
-        # self.connect_form_layout.setColumnStretch(1, 1)
+
         ########## Collapsible Layout Widgets
         self.InputDirLineEdit = qt.QLineEdit()
         self.InputDirPushButton = qt.QPushButton("Load Training Data Directory")
-        self.modality_label = qt.QLabel('Modality')
-        self.modality_label.alignment = 'AlignLeft'
+        self.modality_label = qt.QLabel('Features')
+        self.modality_label.alignment = qt.Qt.AlignLeft
         self.session_label = qt.QLabel('Session')
-        self.session_label.alignment = 'AlignLeft'
+        self.session_label.alignment = qt.Qt.AlignLeft
         self.modalityComboBox = CheckableComboBox()
-        self.modalityComboBox.toolTip = "Modality Combo Box."
+        self.modalityComboBox.toolTip = "Features Combo Box."
         self.sessionComboBox = CheckableComboBox()
         self.sessionComboBox.toolTip = "Session Combo Box"
+        self.filePathLineEdit = qt.QLineEdit()
+        self.AttributeComboBox=CheckableComboBox()
+        self.AttributeComboBox.toolTip="Attribute Combo Box"
+        self.filePathLineEdit.setPlaceholderText("Select a file...")
+        self.browseFileButton = qt.QPushButton("Browse File")
+        self.inputCsvLabel = qt.QLabel("Input CSV:")
+        self.inputCsvLabel.alignment = qt.Qt.AlignLeft
+
+        # Add new text boxes and labels
+        self.groupNameLabel = qt.QLabel("Group Name:")
+        self.groupNameLabel.alignment = qt.Qt.AlignLeft
+        self.groupNameLineEdit = qt.QLineEdit()
+        self.groupNameLineEdit.setPlaceholderText("Enter group name...")
+
+        self.idNameLabel = qt.QLabel("ID Name:")
+        self.idNameLabel.alignment = qt.Qt.AlignLeft
+        self.idNameLineEdit = qt.QLineEdit()
+        self.idNameLineEdit.setPlaceholderText("Enter ID name...")
+
+        
+
+        # Layout setup
         self.connect_form_layout.addWidget(self.InputDirLineEdit, 0, 1)
         self.connect_form_layout.addWidget(self.InputDirPushButton, 1, 1)
-        self.connect_form_layout.addWidget(self.modality_label, 2, 0)
-        self.connect_form_layout.addWidget(self.modalityComboBox, 2, 1)
-        self.connect_form_layout.addWidget(self.session_label, 3, 0)
-        self.connect_form_layout.addWidget(self.sessionComboBox, 3, 1)
+        self.connect_form_layout.addWidget(self.inputCsvLabel, 2, 0)
+        self.connect_form_layout.addWidget(self.filePathLineEdit, 2, 1)
+        self.connect_form_layout.addWidget(self.browseFileButton, 3, 1)
+
+        # Add group name and ID name below CSV and above modality
+        self.connect_form_layout.addWidget(self.groupNameLabel, 4, 0)
+        self.connect_form_layout.addWidget(self.groupNameLineEdit, 4, 1)
+        self.connect_form_layout.addWidget(self.idNameLabel, 5, 0)
+        self.connect_form_layout.addWidget(self.idNameLineEdit, 5, 1)
+
+        # Add modality and session
+        self.connect_form_layout.addWidget(self.modality_label, 6, 0)
+        self.connect_form_layout.addWidget(self.modalityComboBox, 6, 1)
+        self.connect_form_layout.addWidget(self.session_label, 7, 0)
+        self.connect_form_layout.addWidget(self.sessionComboBox, 7, 1)
+
+        self.AttributeLabel = qt.QLabel("Type Selection:")
+        self.AttributeLabel.alignment = qt.Qt.AlignLeft
+        self.connect_form_layout.addWidget(self.AttributeLabel, 8, 0)
+        self.connect_form_layout.addWidget(self.AttributeComboBox, 8, 1)
+
+
         return self.connect_collapsible_button
 
+    
     def setup(self):
         """
         Called when the user opens the module the first time and the widget is initialized.
@@ -144,15 +197,46 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.InputDirPushButton.connect('clicked(bool)', self.populateTrainDirectory)
         self.ui.StartTrain.connect('clicked(bool)', self.onApplyButton)
         self.ui.showLogPushButton.connect('clicked(bool)', self.showTBLog)
+        self.browseFileButton.clicked.connect(self.browseFile)
         # Model radio buttons
         self.ui.DenseNetRadio.toggled.connect(self.processRadioButton)
         self.ui.EfficientNetRadio.toggled.connect(self.processRadioButton)
         self.ui.ResNetRadio.toggled.connect(self.processRadioButton)
         self.ui.SimpleCNNRadio.toggled.connect(self.processRadioButton)
         self.ui.SimpleCNNRadio.checked = True
+        
 
-        # Make sure parameter node is initialized (needed for module reload)
+        self.AttributeComboBox.itemChecked.connect(self.onAttributeChecked)
+        
+
         self.initializeParameterNode()
+
+
+    def onAttributeChecked(self, index, checked):
+        """Handle mutual exclusivity between 'All' and other attributes."""
+        if index == 0:  # "All" is at index 0
+            if checked:
+                # Uncheck and disable all other items
+                for i in range(1, self.AttributeComboBox.count()):
+                    self.AttributeComboBox.setItemChecked(i, False)
+                    self.AttributeComboBox.setItemEnabled(i, False)
+            else:
+                # Enable other items when "All" is unchecked
+                for i in range(1, self.AttributeComboBox.count()):
+                    self.AttributeComboBox.setItemEnabled(i, True)
+        else:
+            # If any other item is checked, ensure "All" is unchecked
+            if checked and self.AttributeComboBox.isItemChecked(0):
+                self.AttributeComboBox.setItemChecked(0, False)
+                # Enable all items in case they were disabled
+                for i in range(1, self.AttributeComboBox.count()):
+                    self.AttributeComboBox.setItemEnabled(i, True)
+
+        checked_items = self.AttributeComboBox.checkedItems()
+        if 'All' in checked_items:
+            selected_attributes = [self.AttributeComboBox.itemText(i) for i in range(1, self.AttributeComboBox.count())]
+        else:
+            selected_attributes = checked_items
 
     def cleanup(self):
         """
@@ -257,7 +341,7 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._updatingGUIFromParameterNode = False
 
     def updateParameterNodeFromGUI(self, caller=None, event=None):
-        """
+        """ 
         This method is called when the user makes any change in the GUI.
         The changes are saved into the parameter node (so that they are restored when the scene is saved and loaded).
         """
@@ -269,50 +353,94 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # TODO: change update parameter nodes
         self._parameterNode.EndModify(wasModified)
 
+    
     def populateInputDirectory(self, mode="train"):
         """
-        Populates self.inputPath
+        Populates self.inputPath with selected directory contents and updates UI elements.
         """
         dialog = qt.QFileDialog(self.uiWidget)
         dialog.setFileMode(qt.QFileDialog.Directory)
         dialog.setViewMode(qt.QFileDialog.Detail)
+        
         if dialog.exec_():
             directoryPath = dialog.selectedFiles()
             logging.debug("onDirectoryChanged: {}".format(directoryPath))
+            
             if mode == "train":
                 self.trainDir = directoryPath[0]
                 self.InputDirLineEdit.text = directoryPath[0]
+                
+                attributes = set()
+                attribute_options = set()
                 feat_set = set()
                 timepoints = set()
                 counter = {}
-                for sub in os.listdir(self.trainDir):
-                    if not os.path.isdir(os.path.join(self.trainDir, sub)):
-                        continue
-                    for tp in os.listdir(os.path.join(self.trainDir, sub)):
-                        if not os.path.isdir(os.path.join(self.trainDir, sub, tp)):
-                            continue
-                        timepoints.add(tp)
-                        for feat in os.listdir(os.path.join(self.trainDir, sub, tp)):
-                            if not os.path.isdir(os.path.join(self.trainDir, sub, tp, feat)):
-                                continue
-                            feat_set.add(feat)
-                            if f"{tp}_{feat}" in counter.keys():
-                                counter[f"{tp}_{feat}"] += 1
-                            else:
-                                counter[f"{tp}_{feat}"] = 1
+                
+                for root, dirs, files in os.walk(self.trainDir):
+                    for file in files:
+                        if file.lower().endswith('.png'):
+                            base_name = os.path.splitext(file)[0]
+                            attribute = base_name.split('_', 1)[0]
+                            attributes.add(attribute)
+                            
                             if self.w is None:
-                                rep_file = glob.glob(os.path.join(self.trainDir, sub, tp, feat, f"*.{DEFAULT_FILE_PATHS['FILE_EXT']}"))
-                                if len(rep_file):
-                                    self.w = Image.open(rep_file[0]).size
-                                else:
-                                    self.w = 512  # default image size 512 x 512
-                for f in feat_set:
-                    self.modalityComboBox.addItem(f)
-                for tp in timepoints:
-                    self.sessionComboBox.addItem(tp)
+                                img_path = os.path.join(root, file)
+                                try:
+                                    with Image.open(img_path) as img:
+                                        self.w = img.size
+                                except:
+                                    self.w = 512 
+                
+                for sub in os.listdir(self.trainDir):
+                    sub_path = os.path.join(self.trainDir, sub)
+                    if not os.path.isdir(sub_path):
+                        continue
+                    
+                    for tp in os.listdir(sub_path):
+                        tp_path = os.path.join(sub_path, tp)
+                        if not os.path.isdir(tp_path):
+                            continue
+                        
+                        timepoints.add(tp)
+                        
+                        for feat in os.listdir(tp_path):
+                            feat_path = os.path.join(tp_path, feat)
+                            if not os.path.isdir(feat_path):
+                                continue
+                            
+                            feat_set.add(feat)
+                            key = f"{tp}_{feat}"
+                            counter[key] = counter.get(key, 0) + 1
+                            
+                            png_files = glob.glob(os.path.join(feat_path, f"*.{DEFAULT_FILE_PATHS['FILE_EXT']}"))
+                            for file_path in png_files:
+                                filename = os.path.basename(file_path)
+                                prefix = filename.split('_', 1)[0]
+                                attribute_options.add(prefix)
+                
+                # Populate UI elements
+
+                
+                self.AttributeComboBox.clear()
+                self.AttributeComboBox.addItem("All")  
+                self.AttributeComboBox.addItems(sorted(attributes))
+                                
+                self.modalityComboBox.clear()
+                self.modalityComboBox.addItems(sorted(feat_set))
+                
+                self.sessionComboBox.clear()
+                self.sessionComboBox.addItems(sorted(timepoints))
+                
                 self.counter = counter
+                
+                if self.w is None:
+                    self.w = 512
+
+                    
+                  
 
     def processInputText(self, text):
+        print(text)
         text_lst = text.split(":")[1].strip().split(",")
         text_lst = [t.strip() for t in text_lst]
         return text_lst
@@ -339,6 +467,10 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         DEFAULT_FILE_PATHS["TRAIN_DATA_DIR"] = self.InputDirLineEdit.text
         DEFAULT_FILE_PATHS["FEATURE_DIRS"] = self.processInputText(self.modalityComboBox.currentText)
         DEFAULT_FILE_PATHS["TIME_POINTS"] = self.processInputText(self.sessionComboBox.currentText)
+        DEFAULT_FILE_PATHS["CSV_path"] = self.filePathLineEdit.text
+        DEFAULT_FILE_PATHS["group_name"] = self.groupNameLineEdit.text
+        DEFAULT_FILE_PATHS["id_name"] = self.idNameLineEdit.text
+        DEFAULT_FILE_PATHS["side"]=self.AttributeComboBox.currentText
         return DEFAULT_FILE_PATHS, True
 
     def checkOutputDirectory(self):
@@ -361,7 +493,6 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Run processing when user clicks "Apply" button.
         """
         try:
-            # Compute output
             file_paths, enough_samples = self.populateDataDirectory()
             isEmpty = self.checkOutputDirectory()
 
@@ -420,7 +551,6 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if self._finishCallback is not None:
                 self._finishCallback(None)
         except Asynchrony.CancelledException:
-            # if they cancelled, the finish was as expected
             if self._finishCallback is not None:
                 self._finishCallback(None)
         except Exception as e:
@@ -473,6 +603,7 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 #
 
 class DeepLearnerLogic(ScriptedLoadableModuleLogic):
+    print("CALL LOGIC")
     """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -517,6 +648,7 @@ class DeepLearnerLogic(ScriptedLoadableModuleLogic):
             ui=None,
             w=None
         ):
+        print("UTILISATION DU GPU",use_gpu)
         """
         Run the processing algorithm.
         Can be used without GUI widget.
@@ -562,6 +694,9 @@ class DeepLearnerLogic(ScriptedLoadableModuleLogic):
             "file_paths": file_paths,
             "w": w
         }
+        print("CA VA CREER LE TRAINING")
+        print(args)
+        args['in_channels'] = len(args['file_paths']['TIME_POINTS']) * len(args['file_paths']['FEATURE_DIRS']) * 2
         import time
         from DeepLearnerLib.training.EfficientNetTrainer import cli_main
         startTime = time.time()
