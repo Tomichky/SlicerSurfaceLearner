@@ -1,7 +1,17 @@
 import threading
 import time
-
-import qt
+import sys
+try:
+    import qt 
+except ImportError:
+    try:
+        import PyQt5 as qt
+    except ImportError:
+        try:
+            import PySide2 as qt  
+        except ImportError:
+            print("No QT installed")
+            raise
 
 class Asynchrony(object):
   '''
