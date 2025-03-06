@@ -1,37 +1,41 @@
 import logging
-import os
+import os.path
 from argparse import ArgumentParser
-
+import os 
 import pytorch_lightning as pl
 import torch
 import torch.nn
-from monai.networks.nets import EfficientNetBN, DenseNet, SEResNet50
+from monai.networks.nets import EfficientNetBN
+from monai.networks.nets import DenseNet
+from monai.networks.nets import SEResNet50
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+from pytorch_lightning.callbacks import EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.progress import ProgressBarBase
-
+import sys
+parent_of_parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(parent_of_parent_dir)
+sys.path.append('/work/bigo/SlicerSALT/SlicerSALT-5.0.0-linux-amd64/bin/Python/qt')
 from DeepLearnerLib.Asynchrony import Asynchrony
 from DeepLearnerLib.models.cnn_model import SimpleCNN
 from DeepLearnerLib.pl_modules.classifier_modules import ImageClassifier
-from DeepLearnerLib.data_utils.GeomCnnDataset import GeomCnnDataModule, GeomCnnDataModuleKFold
+from DeepLearnerLib.data_utils.GeomCnnDataset import GeomCnnDataModule
+from DeepLearnerLib.data_utils.GeomCnnDataset import GeomCnnDataModuleKFold
 
 
 def weight_reset(m):
-    """Reset the weights of the model if it has a `reset_parameters` method."""
     if isinstance(m, torch.nn.Module) and hasattr(m, 'reset_parameters'):
         m.reset_parameters()
 
 
-def set_progress_bar(qt_progress_bar_object, value):
-    """Set the value of the Qt progress bar."""
-    qt_progress_bar_object.setValue(value)
+def setProgressBar(qtProgressBarObject, value):
+    qtProgressBarObject.setValue(value)
 
 
 class LitProgressBarBase(ProgressBarBase):
-    """Custom progress bar for PyTorch Lightning that updates a Qt progress bar."""
-    def __init__(self, qt_progress_bar_object):
+    def __init__(self, qtProgressBarObject):
         super().__init__()
-        self.qt_progress_bar_object = qt_progress_bar_object
+        self.qtProgressBarObject = qtProgressBarObject
 
     def on_train_epoch_end(self, trainer, pl_module):
         super().on_train_epoch_end(trainer, pl_module)
@@ -40,41 +44,40 @@ class LitProgressBarBase(ProgressBarBase):
         if not hasattr(Asynchrony._ThreadLocalStorage, 'mainQueue'):
             Asynchrony._ThreadLocalStorage.mainQueue = []
 
-        Asynchrony.RunOnMainThread(lambda: set_progress_bar(self.qt_progress_bar_object, percent))
+        Asynchrony.RunOnMainThread(lambda: setProgressBar(self.qtProgressBarObject, percent))
 
-
-def save_args_to_file(args, write_dir):
-    """Save the arguments to a file for future reference."""
-    os.makedirs(write_dir, exist_ok=True)
-    args_file_path = os.path.join(write_dir, "args.txt")
-    with open(args_file_path, 'w') as f:
-        for key, value in args.items():
-            f.write(f"{key}: {value}\n")
-    print(f"Arguments saved to {args_file_path}")
 
 
 def cli_main(args):
-    """Main function to handle the training process."""
+    # -----------
+    # Data
+    # -----------
+
     save_args_to_file(args, args["write_dir"])
 
-    # Data Module Initialization
     if args["n_folds"] == 1:
-        data_modules = [GeomCnnDataModule(
-            batch_size=args["batch_size"],
-            num_workers=args["data_workers"],
-            file_paths=args["file_paths"]
-        )]
+        print("batch_size",args["batch_size"])
+        data_modules = [
+            GeomCnnDataModule(
+                batch_size=args["batch_size"],
+                num_workers=args["data_workers"],
+                file_paths=args["file_paths"]
+            )
+        ]
     else:
+        print("batch_size",args["batch_size"])
         data_module_generator = GeomCnnDataModuleKFold(
             batch_size=args["batch_size"],
             num_workers=args["data_workers"],
             n_splits=args["n_folds"],
             file_paths=args["file_paths"],
+            
         )
         data_modules = data_module_generator.get_folds()
         print(f"Number of folds: {len(data_modules)}")
-
-    # Model Initialization
+        # ------------
+        # model
+        # ------------
     if args["model"] == "eff_bn":
         backbone = EfficientNetBN(
             model_name="efficientnet-b0",
@@ -106,59 +109,59 @@ def cli_main(args):
     device = "cuda" if torch.cuda.is_available() and args["use_gpu"] else "cpu"
     print(f"Using device: {device}")
 
-    model = ImageClassifier(
-        backbone,
-        learning_rate=args["learning_rate"],
-        criterion=torch.nn.CrossEntropyLoss(weight=torch.FloatTensor([1.0, args["pos_weight"]])),
-        custom_device=device,
-        metrics=["acc", "precision", "recall"]
-    )
+    model = ImageClassifier(backbone,
+                            learning_rate=args["learning_rate"],
+                            criterion=torch.nn.CrossEntropyLoss(
+                                weight=torch.FloatTensor([1.0, args["pos_weight"]])),
+                            custom_device=device,
+                            metrics=["acc", "precision", "recall"])
     print(f"Model initialized successfully.")
 
-    # Training Loop
     for i in range(args["n_folds"]):
         print(f"==============================Fold {i}: Starting Training==============================")
-        
-        # Logger
+        # logger
         logger = TensorBoardLogger(
             save_dir=os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i)),
             name=args["exp_name"]
         )
         print(f"TensorBoard logger initialized for fold {i}.")
 
-        # Callbacks
-        es = EarlyStopping(monitor='validation/valid_loss', patience=30)
-        progress_bar = LitProgressBarBase(args["qtProgressBarObject"])
+        # early stopping
+        es = EarlyStopping(
+            monitor='validation/valid_loss',
+            patience=30
+        )
+        print(f"Early stopping callback initialized for fold {i}.")
+
+        progressBar = LitProgressBarBase(args["qtProgressBarObject"])
+        print(f"Progress bar callback initialized for fold {i}.")
+
         checkpointer = ModelCheckpoint(
             monitor=args["monitor"],
-            save_top_k=args["maxCp"],
-            verbose=True,
-            save_last=False,
+            save_top_k=args["maxCp"], verbose=True, save_last=False,
             every_n_epochs=args["cp_n_epoch"],
             dirpath=os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i), "checkpoints")
         )
-        print(f"Callbacks initialized for fold {i}.")
+        print(f"Model checkpoint callback initialized for fold {i}.")
 
-        # Trainer
-        trainer = pl.Trainer(
-            max_epochs=args["max_epochs"],
-            accelerator=device,
-            log_every_n_steps=5,
-            num_sanity_val_steps=1,
-            logger=logger,
-            callbacks=[checkpointer, es, progress_bar]
-        )
+        # ------------
+        # training
+        # ------------
+        trainer = pl.Trainer(max_epochs=args["max_epochs"],
+                             accelerator=device,
+                             log_every_n_steps=5,
+                             num_sanity_val_steps=1,
+                             logger=logger,
+                             callbacks=[ checkpointer, es])
         print(f"Trainer initialized for fold {i}.")
 
-        # Training
         print(f"Starting training for fold {i}...")
-        try:
+        try:    
             trainer.fit(model, datamodule=data_modules[i])
         except Exception as e:
             print(f"Error during training for fold {i}: {str(e)}")
         print(f"Training completed for fold {i}.")
 
-        # Save Model
         saved_name = os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i), "model.pt")
         logging.info(f"Saving model: {saved_name}")
         torch.save(model.backbone, saved_name)
@@ -168,13 +171,22 @@ def cli_main(args):
         model.apply(weight_reset)
         print(f"Model weights reset for fold {i}.")
 
-        # Reset Progress Bar
         if args["qtProgressBarObject"] is not None:
             if not hasattr(Asynchrony._ThreadLocalStorage, 'mainQueue'):
                 Asynchrony._ThreadLocalStorage.mainQueue = []
-            Asynchrony.RunOnMainThread(lambda: set_progress_bar(args["qtProgressBarObject"], 0.0))
+            Asynchrony.RunOnMainThread(lambda: setProgressBar(args["qtProgressBarObject"], 0.0))
             print(f"Progress bar reset for fold {i}.")
     print(f"Finished Training!")
+
+def save_args_to_file(args, write_dir):
+    os.makedirs(write_dir, exist_ok=True)
+    
+    args_file_path = os.path.join(write_dir, "args.txt")
+    with open(args_file_path, 'w') as f:
+        for key, value in args.items():
+            f.write(f"{key}: {value}\n")
+    print(f"Arguments saved to {args_file_path}")
+
 
 
 if __name__ == "__main__":
@@ -189,37 +201,51 @@ if __name__ == "__main__":
     parser.add_argument('--model', type=str, default="densenet")
     parser.add_argument('--use_gpu', type=bool, default=False)
     parser.add_argument('--n_folds', type=int, default=13)
-    parser.add_argument('--write_dir', type=str, default="/work/bigo/data/test_code_V06_0702_both_ct")
+    parser.add_argument('--write_dir', type=str, default="/work/bigo/data/training_02_26_densenet")
     parser.add_argument('--exp_name', type=str, default="Test")
     parser.add_argument('--cp_n_epoch', type=int, default=1)
     parser.add_argument('--maxCp', type=int, default=2)
     parser.add_argument('--monitor', type=str, default="validation/valid_loss")
-    parser.add_argument('--pos_weight', type=float, default=5.0)
-    parser.add_argument('--side', type=str, choices=['left', 'right', 'both'], default='both')
+    parser.add_argument('--pos_weight', type=float, default=1.0)
 
     args = vars(parser.parse_args())
 
     # Default File Paths
     DEFAULT_FILE_PATHS = {
-        "TRAIN_DATA_DIR": "/NIRAL/work/bigo/data/Non_normalized",
-        "FEATURE_DIRS": ["ct"],
+        "TRAIN_DATA_DIR": "/work/bigo/data/Non_Normalized_2",
+        "FEATURE_DIRS": ["sa"],
         "TIME_POINTS": ["V06"],
         "FILE_SUFFIX": ["_flat", "_flat"],
         "FILE_EXT": ".png",
         "CSV_path": '/work/bigo/data/csv_martin_training_2.csv',
         "group": 'group',
-        "ID": 'CombinedID'
+        "ID": 'CandID',
+        "side": "right - selected items: left, right" 
     }
+
+
+
+    #TO USE THIS CHANGE THE DIFFERENT PARAMETERS AS YOU LIKE
+    #In order this is : The directory with all your training images , the features, you select with ["sa","ct"].. same for TIME_POINTS and SUFFIX,
+    #Then you need the CSV with the subject and the label, group is the name of the column with the label and ID the subject
+    #Finally, "side": "right - selected items: left, right"  is the prefix of your png files, they are supposed to be like right_eacsf_flat.png but you can have something different instead of the right now.
+    #To change the prefix you change after the "selected items:"
+
+    #THE CURRENT ISSUE IS THAT IF YOU SELECT ONLY 1 SIDE, IT DOESN'T WORK
+
+
+    
     args["file_paths"] = DEFAULT_FILE_PATHS
     args["w"] = 512
-    args["side"] = "both"
 
-    # Adjust in_channels based on side
-    if args["side"] == "left" or args["side"] == "right":
-        args["in_channels"] = len(DEFAULT_FILE_PATHS["TIME_POINTS"]) * len(DEFAULT_FILE_PATHS["FEATURE_DIRS"])
-    else:
-        args["in_channels"] = len(DEFAULT_FILE_PATHS["TIME_POINTS"]) * len(DEFAULT_FILE_PATHS["FEATURE_DIRS"]) * 2
+    
+    side_string = DEFAULT_FILE_PATHS.get("side", "")
+    side_parts = side_string.split("selected items:")
+    sides = side_parts[1].strip().split(", ") if len(side_parts) > 1 else ["left", "right"]
+
+    args["in_channels"] = len(DEFAULT_FILE_PATHS["TIME_POINTS"]) * len(DEFAULT_FILE_PATHS["FEATURE_DIRS"]) * len(sides)
 
     args["qtProgressBarObject"] = None
     print(args)
+
     cli_main(args)
