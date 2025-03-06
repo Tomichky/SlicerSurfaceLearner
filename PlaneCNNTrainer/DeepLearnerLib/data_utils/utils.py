@@ -21,7 +21,6 @@ def get_image_files_single_scalar(FILE_PATHS, data_dir="TRAIN_DATA_DIR"):
     """
     print("Using file paths:", FILE_PATHS)
     
-
     file_names = []
     labels = []
 
@@ -31,13 +30,15 @@ def get_image_files_single_scalar(FILE_PATHS, data_dir="TRAIN_DATA_DIR"):
     subject_ids = sorted(os.listdir(FILE_PATHS[data_dir]))
     print("Sorted subject IDs")
 
- 
     scalars = FILE_PATHS["FEATURE_DIRS"]
     time_points = FILE_PATHS["TIME_POINTS"]
 
     attr = get_attributes(FILE_PATHS)
     count = {0: 0, 1: 0}
 
+    type_string = FILE_PATHS.get("side", "")
+    type_parts = type_string.split("selected items:")
+    types = type_parts[1].strip().split(", ") if len(type_parts) > 1 else ["left", "right"]
 
     for sub in subject_ids:
         subject_path = os.path.join(FILE_PATHS[data_dir], sub)
@@ -69,9 +70,9 @@ def get_image_files_single_scalar(FILE_PATHS, data_dir="TRAIN_DATA_DIR"):
                 continue
 
             for scalar in scalars:
-                feat_tuple.append(os.path.join(session_path, scalar, f"left_{scalar}{FILE_PATHS['FILE_SUFFIX'][0]}") + FILE_PATHS["FILE_EXT"])
-                feat_tuple.append(os.path.join(session_path, scalar, f"right_{scalar}{FILE_PATHS['FILE_SUFFIX'][1]}") + FILE_PATHS["FILE_EXT"])
-        
+                for type in types:
+                    feat_tuple.append(os.path.join(session_path, scalar, f"{type}_{scalar}{FILE_PATHS['FILE_SUFFIX'][0]}") + FILE_PATHS["FILE_EXT"])
+
         file_names.append(feat_tuple)
     
     return file_names, labels
