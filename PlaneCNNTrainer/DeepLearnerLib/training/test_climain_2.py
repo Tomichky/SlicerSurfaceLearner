@@ -15,7 +15,7 @@ from pytorch_lightning.callbacks.progress import ProgressBarBase
 import sys
 parent_of_parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(parent_of_parent_dir)
-sys.path.append('/work/bigo/SlicerSALT/SlicerSALT-5.0.0-linux-amd64/bin/Python/qt')
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'SlicerSALT', 'SlicerSALT-5.0.0-linux-amd64', 'bin', 'Python', 'qt'))
 from DeepLearnerLib.Asynchrony import Asynchrony
 from DeepLearnerLib.models.cnn_model import SimpleCNN
 from DeepLearnerLib.pl_modules.classifier_modules import ImageClassifier
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     #THE CURRENT ISSUE IS THAT IF YOU SELECT ONLY 1 SIDE, IT DOESN'T WORK
 
 
-    
+
     args["file_paths"] = DEFAULT_FILE_PATHS
     args["w"] = 512
 
