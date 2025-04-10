@@ -1,7 +1,7 @@
 import logging
 import os.path
 from argparse import ArgumentParser
-
+import os 
 import pytorch_lightning as pl
 import torch
 import torch.nn
@@ -11,8 +11,11 @@ from monai.networks.nets import SEResNet50
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.callbacks.progress import ProgressBar
-
+#from pytorch_lightning.callbacks.progress import ProgressBarBase
+import sys
+parent_of_parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(parent_of_parent_dir)
+sys.path.append('/work/bigo/SlicerSALT/SlicerSALT-5.0.0-linux-amd64/bin/Python/qt')
 from DeepLearnerLib.Asynchrony import Asynchrony
 from DeepLearnerLib.models.cnn_model import SimpleCNN
 from DeepLearnerLib.pl_modules.classifier_modules import ImageClassifier
@@ -29,115 +32,185 @@ def setProgressBar(qtProgressBarObject, value):
     qtProgressBarObject.setValue(value)
 
 
-class LitProgressBar(ProgressBar):
-    def __init__(self, qtProgressBarObject):
-        super().__init__()  # don't forget this :)
-        self.enable = True
-        self.qtProgressBarObject = qtProgressBarObject
+# class LitProgressBarBase(ProgressBarBase):
+#     def __init__(self, qtProgressBarObject):
+#         super().__init__()
+#         self.qtProgressBarObject = qtProgressBarObject
 
-    def disable(self):
-        self.enable = False
+#     def on_train_epoch_end(self, trainer, pl_module):
+#         super().on_train_epoch_end(trainer, pl_module)
+#         percent = (pl_module.current_epoch + 1) * 100.0 / trainer.max_epochs
 
-    def on_train_epoch_end(self, trainer, pl_module, **kwargs):
-        super().on_train_epoch_end(trainer, pl_module)  # don't forget this :)
-        percent = (pl_module.current_epoch + 1) * 100.0 / trainer.max_epochs
-        Asynchrony.RunOnMainThread(lambda: setProgressBar(self.qtProgressBarObject, percent))
+#         if not hasattr(Asynchrony._ThreadLocalStorage, 'mainQueue'):
+#             Asynchrony._ThreadLocalStorage.mainQueue = []
+
+#         Asynchrony.RunOnMainThread(lambda: setProgressBar(self.qtProgressBarObject, percent))
+
 
 
 def cli_main(args):
-    # -----------
-    # Data
-    # -----------
-    if args["n_folds"] == 1:
-        data_modules = [
-            GeomCnnDataModule(
+    try:
+        print("Début de cli_main avec les arguments:")
+        for key, value in args.items():
+            if key != 'file_paths':
+                print(f"{key}: {value}")
+        
+        # Vérification des données
+        if not os.path.exists(args["write_dir"]):
+            os.makedirs(args["write_dir"])
+            print(f"Création du répertoire {args['write_dir']}")
+        
+        # Vérification des chemins de fichiers
+        if 'file_paths' in args and 'CSV_path' in args['file_paths']:
+            if not os.path.exists(args['file_paths']['CSV_path']):
+                raise FileNotFoundError(f"Fichier CSV introuvable: {args['file_paths']['CSV_path']}")
+
+        save_args_to_file(args, args["write_dir"])
+
+    
+
+        if args["n_folds"] == 1:
+            print("batch_size",args["batch_size"])
+            data_modules = [
+                GeomCnnDataModule(
+                    batch_size=args["batch_size"],
+                    num_workers=args["data_workers"],
+                    file_paths=args["file_paths"]
+                )
+            ]
+        else:
+            print("batch_size",args["batch_size"])
+            data_module_generator = GeomCnnDataModuleKFold(
                 batch_size=args["batch_size"],
                 num_workers=args["data_workers"],
-                file_paths=args["file_paths"]
+                n_splits=args["n_folds"],
+                file_paths=args["file_paths"],
+                
             )
-        ]
-    else:
-        data_module_generator = GeomCnnDataModuleKFold(
-            batch_size=args["batch_size"],
-            num_workers=args["data_workers"],
-            n_splits=args["n_folds"],
-            file_paths=args["file_paths"]
-        )
-        data_modules = data_module_generator.get_folds()
+            data_modules = data_module_generator.get_folds()
+            print(f"Number of folds: {len(data_modules)}")
+          
+        if args["model"] == "eff_bn":
+            backbone = EfficientNetBN(
+                model_name="efficientnet-b0",
+                in_channels=args["in_channels"],
+                pretrained=True,
+                num_classes=2
+            )
+        elif args["model"] == "densenet":
+            backbone = DenseNet(
+                spatial_dims=2,
+                in_channels=args["in_channels"],
+                out_channels=2
+            )
+        elif args["model"] == "resnet":
+            backbone = SEResNet50(
+                spatial_dims=2,
+                in_channels=args["in_channels"],
+                num_classes=2,
+                pretrained=True
+            )
+        else:
+            backbone = SimpleCNN(
+                in_channels=args["in_channels"],
+                w=args["w"]
+            )
+        print(f"Model: {args['model']}")
+        print(f"Backbone architecture: {backbone}")
 
-        # ------------
-        # model
-        # ------------
-    if args["model"] == "eff_bn":
-        backbone = EfficientNetBN(
-            model_name="efficientnet-b0",
-            in_channels=args["in_channels"],
-            pretrained=True,
-            num_classes=2
-        )
-    elif args["model"] == "densenet":
-        backbone = DenseNet(
-            spatial_dims=2,
-            in_channels=args["in_channels"],
-            out_channels=2
-        )
-    elif args["model"] == "resnet":
-        backbone = SEResNet50(
-            spatial_dims=2,
-            in_channels=args["in_channels"],
-            num_classes=2,
-            pretrained=True
-        )
-    else:
-        backbone = SimpleCNN(
-            in_channels=args["in_channels"],
-            w=args["w"]
-        )
-    device = "cuda:0" if torch.cuda.is_available() and args["use_gpu"] else "cpu"
-    model = ImageClassifier(backbone,
-                            learning_rate=args["learning_rate"],
-                            criterion=torch.nn.CrossEntropyLoss(
-                                weight=torch.FloatTensor([1.0, args["pos_weight"]])),
-                            device=device,
-                            metrics=["acc", "precision", "recall"])
+        device = "cuda" if torch.cuda.is_available() and args["use_gpu"] else "cpu"
+        print(f"Using device: {device}")
 
-    for i in range(args["n_folds"]):
-        # logger
-        logger = TensorBoardLogger(
-            save_dir=os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i)),
-            name=args["exp_name"]
-        )
-        # early stopping
-        es = EarlyStopping(
-            monitor='validation/valid_loss',
-            patience=30
-        )
-        progressBar = LitProgressBar(args["qtProgressBarObject"])
-        checkpointer = ModelCheckpoint(
-            monitor=args["monitor"],
-            save_top_k=args["maxCp"], verbose=True, save_last=False,
-            every_n_epochs=args["cp_n_epoch"],
-            dirpath=os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i), "checkpoints")
-        )
-        # ------------
-        # training
-        # ------------
+        model = ImageClassifier(backbone,
+                                learning_rate=args["learning_rate"],
+                                criterion=torch.nn.CrossEntropyLoss(
+                                    weight=torch.FloatTensor([1.0, args["pos_weight"]])),
+                                custom_device=device,
+                                metrics=["acc", "precision", "recall"])
+        print(f"Model initialized successfully.")
 
-        trainer = pl.Trainer(max_epochs=args["max_epochs"],
-                             accelerator=device,
-                             log_every_n_steps=5,
-                             num_sanity_val_steps=1,
-                             logger=logger,
-                             callbacks=[progressBar, checkpointer, es])
-        trainer.fit(model, datamodule=data_modules[i])
-        saved_name = os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i), "model.pt")
-        logging.info(f"Saving model: {saved_name}")
-        torch.save(model.backbone, saved_name)
-        print(f"==============================Fold {i}: Training Finished==============================")
-        model.apply(weight_reset)
-        if args["qtProgressBarObject"] is not None:
-            Asynchrony.RunOnMainThread(lambda: setProgressBar(args["qtProgressBarObject"], 0.0))
+        for i in range(args["n_folds"]):
+            print(f"==============================Fold {i}: Starting Training==============================")
+            # logger
+            logger = TensorBoardLogger(
+                save_dir=os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i)),
+                name=args["exp_name"]
+            )
+            print(f"TensorBoard logger initialized for fold {i}.")
+
+            # early stopping
+            es = EarlyStopping(
+                monitor='validation/valid_loss',
+                patience=30
+            )
+            print(f"Early stopping callback initialized for fold {i}.")
+
+            #progressBar = LitProgressBarBase(args["qtProgressBarObject"])
+            #print(f"Progress bar callback initialized for fold {i}.")
+
+            checkpointer = ModelCheckpoint(
+                monitor=args["monitor"],
+                save_top_k=args["maxCp"], verbose=True, save_last=False,
+                every_n_epochs=args["cp_n_epoch"],
+                dirpath=os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i), "checkpoints")
+            )
+            print(f"Model checkpoint callback initialized for fold {i}.")
+
+            # ------------
+            # training
+            # ------------
+            trainer = pl.Trainer(max_epochs=args["max_epochs"],
+                                accelerator=device,
+                                log_every_n_steps=5,
+                                num_sanity_val_steps=1,
+                                logger=logger,
+                                callbacks=[ checkpointer, es])
+            print(f"Trainer initialized for fold {i}.")
+
+            print(f"Starting training for fold {i}...")
+            try:    
+                trainer.fit(model, datamodule=data_modules[i])
+            except Exception as e:
+                print(f"Error during training for fold {i}: {str(e)}")
+            print(f"Training completed for fold {i}.")
+
+            saved_name = os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i), "model.pt")
+            logging.info(f"Saving model: {saved_name}")
+            torch.save(model.backbone, saved_name)
+            print(f"Model saved for fold {i}.")
+
+            print(f"==============================Fold {i}: Training Finished==============================")
+            model.apply(weight_reset)
+            print(f"Model weights reset for fold {i}.")
+
+            if args["qtProgressBarObject"] is not None:
+                if not hasattr(Asynchrony._ThreadLocalStorage, 'mainQueue'):
+                    Asynchrony._ThreadLocalStorage.mainQueue = []
+                Asynchrony.RunOnMainThread(lambda: setProgressBar(args["qtProgressBarObject"], 0.0))
+                print(f"Progress bar reset for fold {i}.")
+        
+    except Exception as e:
+            print(f"Erreur détectée: {e}")
     print(f"Finished Training!")
+
+def save_args_to_file(args, write_dir):
+    os.makedirs(write_dir, exist_ok=True)
+    
+    args_file_path = os.path.join(write_dir, "args.txt")
+    with open(args_file_path, 'w') as f:
+        for key, value in args.items():
+            f.write(f"{key}: {value}\n")
+    print(f"Arguments saved to {args_file_path}")
+
+def save_args_to_file(args, write_dir):
+    os.makedirs(write_dir, exist_ok=True)
+    
+    args_file_path = os.path.join(write_dir, "args.txt")
+    with open(args_file_path, 'w') as f:
+        for key, value in args.items():
+            f.write(f"{key}: {value}\n")
+    print(f"Arguments saved to {args_file_path}")
+
 
 #
 # if __name__ == "__main__":
