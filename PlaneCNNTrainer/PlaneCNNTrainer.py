@@ -71,6 +71,7 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.model = None
         self._parameterNode = None
         self._updatingGUIFromParameterNode = False
+    
 
     def browseFile(self):
         file_dialog = qt.QFileDialog()
@@ -121,7 +122,12 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.idNameLineEdit = qt.QLineEdit()
         self.idNameLineEdit.setPlaceholderText("Enter ID name...")
 
-        
+        # Add file format selection
+        self.fileFormatLabel = qt.QLabel("File Format:")
+        self.fileFormatLabel.alignment = qt.Qt.AlignLeft
+        self.fileFormatComboBox = qt.QComboBox()
+        self.fileFormatComboBox.addItems([".nii.gz", ".png"])
+        self.fileFormatComboBox.currentTextChanged.connect(self.updateFileExtension)
 
         # Layout setup
         self.connect_form_layout.addWidget(self.InputDirLineEdit, 0, 1)
@@ -146,11 +152,19 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.AttributeLabel.alignment = qt.Qt.AlignLeft
         self.connect_form_layout.addWidget(self.AttributeLabel, 8, 0)
         self.connect_form_layout.addWidget(self.AttributeComboBox, 8, 1)
-
+        
+        # Add file format selection below attributes
+        self.connect_form_layout.addWidget(self.fileFormatLabel, 9, 0)
+        self.connect_form_layout.addWidget(self.fileFormatComboBox, 9, 1)
 
         return self.connect_collapsible_button
 
-    
+    def updateFileExtension(self, extension):
+        DEFAULT_FILE_PATHS["FILE_EXT"] = extension
+
+
+
+
     def setup(self):
         """
         Called when the user opens the module the first time and the widget is initialized.
@@ -206,37 +220,10 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.SimpleCNNRadio.checked = True
         
 
-        self.AttributeComboBox.itemChecked.connect(self.onAttributeChecked)
         
 
         self.initializeParameterNode()
 
-
-    def onAttributeChecked(self, index, checked):
-        """Handle mutual exclusivity between 'All' and other attributes."""
-        if index == 0:  # "All" is at index 0
-            if checked:
-                # Uncheck and disable all other items
-                for i in range(1, self.AttributeComboBox.count()):
-                    self.AttributeComboBox.setItemChecked(i, False)
-                    self.AttributeComboBox.setItemEnabled(i, False)
-            else:
-                # Enable other items when "All" is unchecked
-                for i in range(1, self.AttributeComboBox.count()):
-                    self.AttributeComboBox.setItemEnabled(i, True)
-        else:
-            # If any other item is checked, ensure "All" is unchecked
-            if checked and self.AttributeComboBox.isItemChecked(0):
-                self.AttributeComboBox.setItemChecked(0, False)
-                # Enable all items in case they were disabled
-                for i in range(1, self.AttributeComboBox.count()):
-                    self.AttributeComboBox.setItemEnabled(i, True)
-
-        checked_items = self.AttributeComboBox.checkedItems()
-        if 'All' in checked_items:
-            selected_attributes = [self.AttributeComboBox.itemText(i) for i in range(1, self.AttributeComboBox.count())]
-        else:
-            selected_attributes = checked_items
 
     def cleanup(self):
         """
@@ -371,23 +358,29 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.InputDirLineEdit.text = directoryPath[0]
                 
                 attributes = set()
-                attribute_options = set()
                 feat_set = set()
                 timepoints = set()
                 counter = {}
                 
+                selected_extension = DEFAULT_FILE_PATHS["FILE_EXT"]
+                
                 for root, dirs, files in os.walk(self.trainDir):
                     for file in files:
-                        if file.lower().endswith('.png'):
+                        if file.lower().endswith(selected_extension):
                             base_name = os.path.splitext(file)[0]
+                            if selected_extension == ".nii.gz":
+                                base_name = os.path.splitext(os.path.splitext(file)[0])[0]
                             attribute = base_name.split('_', 1)[0]
                             attributes.add(attribute)
                             
                             if self.w is None:
                                 img_path = os.path.join(root, file)
                                 try:
-                                    with Image.open(img_path) as img:
-                                        self.w = img.size
+                                    if selected_extension == ".png":
+                                        with Image.open(img_path) as img:
+                                            self.w = img.size[0]
+                                    else:  # For nii.gz, we'll set a default or try to read if possible
+                                        self.w = 512 
                                 except:
                                     self.w = 512 
                 
@@ -411,18 +404,9 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                             feat_set.add(feat)
                             key = f"{tp}_{feat}"
                             counter[key] = counter.get(key, 0) + 1
-                            
-                            png_files = glob.glob(os.path.join(feat_path, f"*.{DEFAULT_FILE_PATHS['FILE_EXT']}"))
-                            for file_path in png_files:
-                                filename = os.path.basename(file_path)
-                                prefix = filename.split('_', 1)[0]
-                                attribute_options.add(prefix)
                 
                 # Populate UI elements
-
-                
                 self.AttributeComboBox.clear()
-                self.AttributeComboBox.addItem("All")  
                 self.AttributeComboBox.addItems(sorted(attributes))
                                 
                 self.modalityComboBox.clear()
@@ -464,14 +448,27 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # def processInputFields(self, text):
     #
     def populateDataDirectory(self):
-        DEFAULT_FILE_PATHS["TRAIN_DATA_DIR"] = self.InputDirLineEdit.text
-        DEFAULT_FILE_PATHS["FEATURE_DIRS"] = self.processInputText(self.modalityComboBox.currentText)
-        DEFAULT_FILE_PATHS["TIME_POINTS"] = self.processInputText(self.sessionComboBox.currentText)
-        DEFAULT_FILE_PATHS["CSV_path"] = self.filePathLineEdit.text
-        DEFAULT_FILE_PATHS["group_name"] = self.groupNameLineEdit.text
-        DEFAULT_FILE_PATHS["id_name"] = self.idNameLineEdit.text
-        DEFAULT_FILE_PATHS["side"]=self.AttributeComboBox.currentText
-        return DEFAULT_FILE_PATHS, True
+        try:
+            DEFAULT_FILE_PATHS["TRAIN_DATA_DIR"] = self.InputDirLineEdit.text
+            DEFAULT_FILE_PATHS["FEATURE_DIRS"] = self.processInputText(self.modalityComboBox.currentText)
+            DEFAULT_FILE_PATHS["TIME_POINTS"] = self.processInputText(self.sessionComboBox.currentText)
+            DEFAULT_FILE_PATHS["FILE_SUFFIX"] = ["_flat", "_flat"]
+            DEFAULT_FILE_PATHS["CSV_path"] = self.filePathLineEdit.text
+            DEFAULT_FILE_PATHS["FILE_EXT"] = ".nii.gz"
+            DEFAULT_FILE_PATHS["group"] = self.groupNameLineEdit.text
+            DEFAULT_FILE_PATHS["ID"] = self.idNameLineEdit.text
+            DEFAULT_FILE_PATHS["side"] = f"right - selected items: {', '.join(self.processInputText(self.AttributeComboBox.currentText))}"
+
+
+            
+            print("Paramètres préparés:")
+            for key, value in DEFAULT_FILE_PATHS.items():
+                print(f"{key}: {value}")
+                
+            return DEFAULT_FILE_PATHS, True
+        except Exception as e:
+            print(f"Erreur dans populateDataDirectory: {str(e)}")
+            return None, False
 
     def checkOutputDirectory(self):
         """
@@ -536,9 +533,10 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.error_dialog = qt.QErrorMessage()
                 self.ui.error_dialog.showMessage('Output directory not empty!')
         except Exception as e:
-            slicer.util.errorDisplay("Failed to compute results: " + str(e))
+            print(f"Erreur critique dans onApplyButton: {str(e)}")
             import traceback
             traceback.print_exc()
+            slicer.util.errorDisplay(f"Erreur: {str(e)}")
 
     @property
     def running(self):
@@ -680,7 +678,7 @@ class DeepLearnerLogic(ScriptedLoadableModuleLogic):
             "in_channels": in_channels,
             "num_classes": num_classes,
             "max_epochs": max_epochs,
-            "gpus": use_gpu,
+            "use_gpu": use_gpu,
             "model": model_name,
             "n_folds": n_folds,
             "data_workers": 1,
@@ -690,24 +688,42 @@ class DeepLearnerLogic(ScriptedLoadableModuleLogic):
             "maxCp": max_cp,
             "monitor": monitor,
             "pos_weight": pos_weight,
-            "qtProgressBarObject": ui.trainingProgressBar,
+            "qtProgressBarObject": False, #ui.trainingProgressBar,
             "file_paths": file_paths,
             "w": w
         }
+       
         print("CA VA CREER LE TRAINING")
         print(args)
-        args['in_channels'] = len(args['file_paths']['TIME_POINTS']) * len(args['file_paths']['FEATURE_DIRS']) * 2
-        import time
-        from DeepLearnerLib.training.EfficientNetTrainer import cli_main
-        startTime = time.time()
-        logging.info('Processing started ... ')
-        logging.info(args)
-        cli_main(args)
-        ui.trainingProgressBar.setValue(100)
-        ui.StartTrain.enabled = True
-        self.InputDirPushButton.enabled = True
-        stopTime = time.time()
-        logging.info('Processing completed in {0:.2f} seconds'.format(stopTime - startTime))
+
+        # Calcul correct de in_channels
+        try:
+            print("Arguments reçus :")
+            import pprint
+            pp = pprint.PrettyPrinter(indent=4)
+            pp.pprint(args)
+            
+          
+            assert args['in_channels'] > 0, f"in_channels doit être > 0 (reçu: {args['in_channels']})"
+            assert args['num_classes'] > 0, f"num_classes doit être > 0 (reçu: {args['num_classes']})"
+            
+            from DeepLearnerLib.training.EfficientNetTrainer import cli_main
+            print("Import de cli_main réussi")
+            
+            import time
+            startTime = time.time()
+            print("Début du traitement...")
+            
+            print("Appel de cli_main...")
+            cli_main(args)
+            print("cli_main terminé avec succès")
+        
+        except Exception as e:
+            print(f"ERREUR CRITIQUE: {str(e)}")
+            print("Traceback complet :")
+            import traceback
+            traceback.print_exc()
+        
 
 
 #
