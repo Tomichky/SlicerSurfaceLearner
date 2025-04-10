@@ -73,6 +73,7 @@ class SurfacePlaneMapperWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
         uiWidget = slicer.util.loadUI(self.resourcePath('UI/SurfacePlaneMapper.ui'))
+        print(self.resourcePath('UI/SurfacePlaneMapper.ui'))
         self.uiWidget = uiWidget
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
@@ -102,6 +103,9 @@ class SurfacePlaneMapperWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
+
+        
+        
 
     def populateInputDirectory(self, mode="input"):
         """
@@ -237,7 +241,7 @@ class SurfacePlaneMapperWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
                     self.ui.TemplateLineEdit.text,
                     self.ui.OutputLineEdit.text,
                     self.ui.FileTypeCombo.currentText,
-                    512,
+                    self.ui.ResolutionCombo.currentText,
                     self.ui.progressBar)
             )
             self._asynchrony.Start()
