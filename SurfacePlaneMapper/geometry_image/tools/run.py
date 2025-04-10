@@ -161,5 +161,3 @@ if __name__ == '__main__':
     args = vars(parser.parse_args())
     run_geom_image(args)
     print("======= End =======")
-
-

@@ -9,84 +9,65 @@ from PIL import Image
 
 from geometry_image.tools.vtk_tools import *
 
+import nibabel as nib
 
 def compute_spherical_area(p1, p2, p3):
-    # length of the sides of the triangle
     a = np.arccos(np.diag(np.dot(p2.T, p3)))
     b = np.arccos(np.diag(np.dot(p1.T, p3)))
     c = np.arccos(np.diag(np.dot(p1.T, p2)))
     s = (a + b + c) / 2
 
-    # L'Huilier's Theorem
-    # tand(E/4)^2 = tan(s/2)tan( (s-a)/2 )tan( (s-b)/2 )tan( (s-c)/2 )
     E = np.tan(s/2) * np.tan((s - a)/2) * np.tan((s - b)/2) * np.tan((s - c)/2)
     A = np.real(4 * np.arctan(np.lib.scimath.sqrt(E)))
+    print(f"Computed spherical area: min={np.min(A)}, max={np.max(A)}")  
     return A
 
-
 def perform_spherial_planar_sampling(pos_shpere: np.ndarray, sampling_type: str) -> np.ndarray:
-    """project sampling location from sphere to a square.
-    This is used to produced spherical geometry images.
-    The sampling is first projected onto an octahedron and then unfolded on a square.
-
-    :param pos_shpere: ndarray with columns containing the (x, y, z) coordinates on the sphere
-    :param sampling_type: 'area' or 'genomic'
-    :return: pos_plane: ndarray with columns cotaining (x, y) coordinates on the plane
-    """
-    a = range(-1, 2, 2)  # [-1 1]
+    a = range(-1, 2, 2)
     grid = np.mgrid[a, a, a].reshape(3, 8)
 
-    # Get anchor points for each quadrant
     anchor_2d = []
     anchor_3d = []
     for quad in range(8):
-        a3d = np.diag(grid[:, quad])  # Creating anchor points (x, 0, 0), (0, y, 0), (0, 0, z)
-        anchor_3d.append(np.roll(a3d, 1, axis=1))  # moving z vertex to the top
+        a3d = np.diag(grid[:, quad])
+        anchor_3d.append(np.roll(a3d, 1, axis=1))
 
-        # Create corresponding 2d anchor points for the plane
-        x = grid[0, quad]
-        y = grid[1, quad]
-        z = grid[2, quad]
-        if z > 0:
-            # Collapse (0, 0, z) to  (0, 0) if z is positive
-            a2d = np.array([[0, 0], [x, 0], [0, y]]).T
-        else:
-            # Otherwise collapse (0, 0, z) to (x, y)
-            a2d = np.array([[x, y], [x, 0], [0, y]]).T
+        x, y, z = grid[:, quad]
+        a2d = np.array([[0, 0], [x, 0], [0, y]]).T if z > 0 else np.array([[x, y], [x, 0], [0, y]]).T
         anchor_2d.append(a2d)
 
     pos_shpere_sign = (pos_shpere >= 0) * 2 - 1
     posw = np.zeros((2, pos_shpere.shape[1]))
-    # project sphere at each quadrant individually
-    for quad in range(0, 8):
+
+    for quad in range(8):
         a2d = anchor_2d[quad]
         a3d = anchor_3d[quad]
-        # find indices of the points that is in this quadrant
         idx = np.where((pos_shpere_sign == grid[:, quad:quad+1]).all(axis=0))[0]
         points = pos_shpere[:, idx]
         n = points.shape[1]
+
         if sampling_type == "area":
-            # find the area of 3 small triangles
-            p1 = a3d[:, 0:1].repeat(n, axis=1)
-            p2 = a3d[:, 1:2].repeat(n, axis=1)
-            p3 = a3d[:, 2:3].repeat(n, axis=1)
+            p1, p2, p3 = [a3d[:, i:i+1].repeat(n, axis=1) for i in range(3)]
             a1 = compute_spherical_area(points, p2, p3)
             a2 = compute_spherical_area(points, p1, p3)
             a3 = compute_spherical_area(points, p1, p2)
-            # barycentric coordinates
             a = a1 + a2 + a3
             a1 /= a
             a2 /= a
             a3 /= a
         else:
             raise Exception("Unknown sampling type!!!")
+
         posw[:, idx] = np.dot(a2d[:, 0:1], a1[np.newaxis, :]) + \
                        np.dot(a2d[:, 1:2], a2[np.newaxis, :]) + \
                        np.dot(a2d[:, 2:3], a3[np.newaxis, :])
+
+    print(f"Projected coordinates: min={np.min(posw)}, max={np.max(posw)}")
     return posw
 
-
 def pad_2d_image(im2):
+    print(f"Before padding: min={np.min(im2)}, max={np.max(im2)}, shape={im2.shape}")
+
     im_pad_right = np.flip(np.flip(im2[:, im2.shape[1]//2:], axis=1), axis=0)
     im_pad_left = np.flip(np.flip(im2[:, 0:im2.shape[1]//2], axis=1), axis=0)
     im_pad_bottom = np.flip(np.flip(im2[im2.shape[0]//2:, :], axis=0), axis=1)
@@ -95,10 +76,17 @@ def pad_2d_image(im2):
     im_pad_right_bottom = im2[0:im2.shape[0]//2, 0:im2.shape[0]//2]
     im_pad_left_bottom = im2[0:im2.shape[0]//2, im2.shape[1]//2:]
     im_pad_right_top = im2[im2.shape[0]//2:, 0:im2.shape[1]//2]
+
     im_padded = np.concatenate([im_pad_top, im2, im_pad_bottom], axis=0)
     left_pad = np.concatenate([im_pad_left_top, im_pad_left, im_pad_left_bottom], axis=0)
     right_pad = np.concatenate([im_pad_right_top, im_pad_right, im_pad_right_bottom], axis=0)
     im_padded = np.concatenate([left_pad, im_padded, right_pad], axis=1)
+
+    print(f"After padding: min={np.min(im_padded)}, max={np.max(im_padded)}, shape={im_padded.shape}")
+
+    if np.all(im_padded == 0):
+        print("WARNING: The image is completely black (filled with zeros).")
+
     return im_padded
 
 
@@ -145,18 +133,82 @@ def read_features(filename, feat_name=None):
     return feature
 
 
-def sgim_sampling_wrapper(args):
-    # Process sphere template to get 2D coordinates
-    posw = get_flat_coordinates(args["sphere_template"])
-    feature = read_features(args["feature_map"], args["feat_name"])
+import numpy as np
+import os
+from pathlib import Path
+from PIL import Image
 
-    # Render 2D image with 2D coordinates and feature map
-    image_array = render_2d_image(posw.T, feature, args["resolution"])
-    image_array = pad_2d_image(image_array)
-    image_array = normalize(image_array)
-    im = Image.fromarray(image_array)
-    Path(os.path.dirname(args["output"])).mkdir(parents=True, exist_ok=True)
-    im.save(args["output"])
+
+def sgim_sampling_wrapper(args):
+    print("Début de sgim_sampling_wrapper avec les arguments :", args)
+
+    # Process sphere template to get 2D coordinates
+    try:
+        posw = get_flat_coordinates(args["sphere_template"])
+        print(f"Coordonnées 2D extraites : shape={posw.shape}, preview={posw[:5]}")
+    except Exception as e:
+        print("Erreur lors de l'obtention des coordonnées 2D :", e)
+        raise
+
+    # Read feature map
+    try:
+        feature = read_features(args["feature_map"], args["feat_name"])
+        print(f"Feature map chargée : shape={feature.shape}, preview={feature[:5]}")
+    except Exception as e:
+        print("Erreur lors du chargement des features :", e)
+        raise
+
+    # Render 2D image
+    try:
+        image_array = render_2d_image(posw.T, feature, args["resolution"])
+        print(f"Image 2D rendue : shape={image_array.shape}, dtype={image_array.dtype}, min={np.min(image_array)}, max={np.max(image_array)}")
+    except Exception as e:
+        print("Erreur lors du rendu de l'image 2D :", e)
+        raise
+
+    # Padding
+    try:
+        image_array = pad_2d_image(image_array)
+        print(f"Image 2D après padding : shape={image_array.shape}, min={np.min(image_array)}, max={np.max(image_array)}")
+        if np.all(image_array == 0):
+            print("ATTENTION : L'image est complètement noire (remplie de zéros).")
+    except Exception as e:
+        print("Erreur lors du padding de l'image 2D :", e)
+        raise
+
+    # Normalization
+    # try:
+    #     image_array = normalize(image_array)
+    #     print("Image normalisée : min=", np.min(image_array), "max=", np.max(image_array))
+    # except Exception as e:
+    #     print("Erreur lors de la normalisation de l'image :", e)
+    #     raise
+    # Convert to image
+
+    # --- NIFTI SAVE ---
+    try:
+        output_path = args["output"]
+        nifti_path = output_path.replace(".png", ".nii.gz")
+        img_nifti = nib.Nifti1Image(image_array.astype(np.float32), affine=np.eye(4))
+        Path(os.path.dirname(nifti_path)).mkdir(parents=True, exist_ok=True)
+        nib.save(img_nifti, nifti_path)
+        print(f"Image NIfTI sauvegardée à {nifti_path}")
+    except Exception as e:
+        print("Erreur lors de la sauvegarde NIFTI :", e)
+        raise
+
+    # --- PNG SAVE ---
+    try:
+        # Normalisation
+        image_norm = normalize(image_array)
+        im = Image.fromarray(image_norm, mode="L")
+        Path(os.path.dirname(output_path)).mkdir(parents=True, exist_ok=True)
+        im.save(output_path)
+        print(f"Image PNG normalisée sauvegardée à {output_path}")
+    except Exception as e:
+        print("Erreur lors de la sauvegarde PNG :", e)
+        raise
+
 
 
 if __name__ == '__main__':
