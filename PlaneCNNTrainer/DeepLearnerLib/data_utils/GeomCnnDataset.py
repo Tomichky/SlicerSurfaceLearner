@@ -15,6 +15,13 @@ from sklearn.model_selection import train_test_split
 from DeepLearnerLib.data_utils.utils import get_image_files_single_scalar
 from DeepLearnerLib.data_utils.CustomDataset import GeomCnnDataset
 
+class AdjustIntensity:
+    def __call__(self, img, label):
+        if label == 0:
+            img = img / 2
+        return img
+    
+
 
 class GeomCnnDataModule(pl.LightningDataModule):
     def __init__(self,
@@ -32,8 +39,8 @@ class GeomCnnDataModule(pl.LightningDataModule):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.train_transforms = Compose(
             [
-                EnsureChannelFirst(channel_dim='no_channel'),
-                NormalizeIntensity(),
+                EnsureChannelFirst(channel_dim='no_channel'),   
+                #NormalizeIntensity(),
                 RandRotate(range_x=np.pi / 12, prob=0.5, keep_size=True),
                 RandFlip(spatial_axis=0, prob=0.5),
                 RandZoom(min_zoom=0.9, max_zoom=1.1, prob=0.5),
@@ -44,7 +51,7 @@ class GeomCnnDataModule(pl.LightningDataModule):
         self.val_transforms = Compose(
             [
                 EnsureChannelFirst(channel_dim='no_channel'), 
-                NormalizeIntensity(), 
+                #NormalizeIntensity(), 
                 EnsureType()
             ]
         )
@@ -52,7 +59,7 @@ class GeomCnnDataModule(pl.LightningDataModule):
         self.test_transform = Compose(
             [
                 EnsureChannelFirst(channel_dim='no_channel'), 
-                NormalizeIntensity(), 
+                #NormalizeIntensity(), 
                 EnsureType()
             ]
         )
@@ -67,7 +74,7 @@ class GeomCnnDataModule(pl.LightningDataModule):
 
         if stage in (None, "fit"):
             print("Loading training and validation data ...")
-            print("FILE_PATHS provided:", self.FILE_PATHS)
+            
             
             train_files, train_labels = get_image_files_single_scalar(FILE_PATHS=self.FILE_PATHS, data_dir="TRAIN_DATA_DIR")
             print(f"Total training files: {len(train_files)}")
@@ -90,16 +97,13 @@ class GeomCnnDataModule(pl.LightningDataModule):
                 )
                 print(f"Training samples: {len(train_x)}, Validation samples: {len(val_x)}")
                 
-                print("Sample training file:", train_x[0] if train_x else "None")
-                print("Sample training label:", train_y[0] if train_y else "None")
+             
                 
                 self.train_ds = GeomCnnDataset(train_x, train_y, self.train_transforms)
                 self.val_ds = GeomCnnDataset(val_x, val_y, self.val_transforms)
             else:
-                print("Using provided data tuple for training and validation...")
                 self.train_ds = GeomCnnDataset(self.data_tuple[0], self.data_tuple[1], self.train_transforms)
                 self.val_ds = GeomCnnDataset(self.data_tuple[2], self.data_tuple[3], self.val_transforms)
-                print(f"Training samples: {len(self.data_tuple[0])}, Validation samples: {len(self.data_tuple[2])}")
         
        
         if stage in (None, "test"):
