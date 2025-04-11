@@ -183,11 +183,11 @@ def cli_main(args):
             model.apply(weight_reset)
             print(f"Model weights reset for fold {i}.")
 
-            if args["qtProgressBarObject"] is not None:
-                if not hasattr(Asynchrony._ThreadLocalStorage, 'mainQueue'):
-                    Asynchrony._ThreadLocalStorage.mainQueue = []
-                Asynchrony.RunOnMainThread(lambda: setProgressBar(args["qtProgressBarObject"], 0.0))
-                print(f"Progress bar reset for fold {i}.")
+            # if args["qtProgressBarObject"] is not None:
+            #     if not hasattr(Asynchrony._ThreadLocalStorage, 'mainQueue'):
+            #         Asynchrony._ThreadLocalStorage.mainQueue = []
+            #     Asynchrony.RunOnMainThread(lambda: setProgressBar(args["qtProgressBarObject"], 0.0))
+            #     print(f"Progress bar reset for fold {i}.")
         
     except Exception as e:
             print(f"Erreur détectée: {e}")
