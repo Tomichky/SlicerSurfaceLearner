@@ -8,20 +8,18 @@ def run_geom_image(args):
     """
     Run this script to compute geometry image for a set of subjects in a directory
     """
-    print("In Geom Image")
-    print(args)
     filenames = generate_file_names(
         args["sub_dir"],
         args["output"],
         args["type"],
         args["modalities"]
     )
-    print(filenames)
+    
     total = len(filenames)
     c = 0
     for files in filenames:
         input_file, output_file, sc = files
-        print(f"in: {input_file}\n out:{output_file}")
+        
         args["feature_map"] = input_file
         args["output"] = output_file
         args["feat_name"] = sc
@@ -81,7 +79,7 @@ def generate_file_names(
 
     if modalities is None:
         modalities = ["x", "y", "z"]
-    print(f"Type: {type}")
+
     subject_ids = os.listdir(input_directory)
     filenames = []
     for sub in subject_ids:
