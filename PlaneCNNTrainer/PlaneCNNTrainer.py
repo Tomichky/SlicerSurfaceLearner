@@ -437,7 +437,6 @@ class PlaneCNNTrainerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Starts tensorboard logging
         """
         tb_dirs = os.path.join(self.ui.writeDirLineEdit.text, "logs", self.model)
-        print(f"Tensorboard directory: {tb_dirs}")
         tb = program.TensorBoard()
         tb.configure(argv=[None, '--logdir', tb_dirs, '--port', self.ui.tbPortLineEdit.text])
         try:
