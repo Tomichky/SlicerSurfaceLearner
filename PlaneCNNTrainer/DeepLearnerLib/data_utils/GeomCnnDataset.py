@@ -69,25 +69,24 @@ class GeomCnnDataModule(pl.LightningDataModule):
 
 
     def setup(self, stage: Optional[str] = None):
-        print("Setting up data loaders ...")
-        print(f"Stage: {stage}")
+       
 
         if stage in (None, "fit"):
-            print("Loading training and validation data ...")
+           
             
             
             train_files, train_labels = get_image_files_single_scalar(FILE_PATHS=self.FILE_PATHS, data_dir="TRAIN_DATA_DIR")
-            print(f"Total training files: {len(train_files)}")
+      
             
             if len(train_files) == 0:
                 raise ValueError("No training files found in the specified directory.")
 
             if self.batch_size == -1:
                 self.batch_size = len(train_files)
-                print(f"Batch size set to: {self.batch_size}")
+
             
             if self.data_tuple is None:
-                print("Splitting data into training and validation sets...")
+
                 train_x, val_x, train_y, val_y = train_test_split(
                     train_files, train_labels,
                     test_size=self.val_frac,
@@ -95,7 +94,7 @@ class GeomCnnDataModule(pl.LightningDataModule):
                     stratify=train_labels,
                     random_state=42
                 )
-                print(f"Training samples: {len(train_x)}, Validation samples: {len(val_x)}")
+
                 
              
                 
@@ -107,20 +106,18 @@ class GeomCnnDataModule(pl.LightningDataModule):
         
        
         if stage in (None, "test"):
-            print("Loading test data ...")
+
             test_files, test_labels = get_image_files_single_scalar(FILE_PATHS=self.FILE_PATHS, data_dir="TEST_DATA_DIR")
-            print(f"Total test files: {len(test_files)}")
+
             
             if len(test_files) == 0:
                 raise ValueError("No test files found in the specified directory.")
             
             # Debug: Check test files and labels
-            print("Sample test file:", test_files[0] if test_files else "None")
-            print("Sample test label:", test_labels[0] if test_labels else "None")
+
             
             self.test_ds = GeomCnnDataset(test_files, test_labels, self.test_transform)
 
-        print("Finished loading data!")
 
 
     def train_dataloader(self):
@@ -149,7 +146,7 @@ class GeomCnnDataModuleKFold:
         self.datamodules = self.split_data()
 
     def split_data(self):
-        print("Splitting data ...")
+
         train_files, train_labels = get_image_files_single_scalar(FILE_PATHS=self.FILE_PATHS, data_dir="TRAIN_DATA_DIR")
         skf = StratifiedKFold(n_splits=self.n_splits)
         datamodule_list = []
