@@ -53,13 +53,10 @@ def cli_main(args):
 
         for key, value in args.items():
 
-        
-        # Vérification des données
+
         if not os.path.exists(args["write_dir"]):
             os.makedirs(args["write_dir"])
 
-        
-        # Vérification des chemins de fichiers
         if 'file_paths' in args and 'CSV_path' in args['file_paths']:
             if not os.path.exists(args['file_paths']['CSV_path']):
                 raise FileNotFoundError(f"Fichier CSV introuvable: {args['file_paths']['CSV_path']}")
