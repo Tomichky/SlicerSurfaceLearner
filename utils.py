@@ -19,7 +19,7 @@ def get_image_files_single_scalar(FILE_PATHS, data_dir="TRAIN_DATA_DIR"):
     Returns:
         tuple: A tuple containing a list of file paths and a list of labels.
     """
-    print("Using file paths:", FILE_PATHS)
+   
     
 
     file_names = []
@@ -29,7 +29,7 @@ def get_image_files_single_scalar(FILE_PATHS, data_dir="TRAIN_DATA_DIR"):
         FILE_PATHS = DEFAULT_FILE_PATHS
 
     subject_ids = sorted(os.listdir(FILE_PATHS[data_dir]))
-    print("Sorted subject IDs")
+
 
  
     scalars = FILE_PATHS["FEATURE_DIRS"]
@@ -122,7 +122,7 @@ def anonymize_dataset(FILE_PATHS):
             attr.drop(attr[attr[FILE_PATHS["id_name"]] == int(sub)].index, inplace=True)
             continue
 
-        print(f"Copying data for subject {sub}...")
+      
         
 
         attr.loc[attr[FILE_PATHS["id_name"]] == int(sub), [FILE_PATHS["id_name"], FILE_PATHS["group_name"]]] = [i, group]
