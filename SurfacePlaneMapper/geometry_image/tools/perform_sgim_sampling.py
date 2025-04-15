@@ -19,7 +19,6 @@ def compute_spherical_area(p1, p2, p3):
 
     E = np.tan(s/2) * np.tan((s - a)/2) * np.tan((s - b)/2) * np.tan((s - c)/2)
     A = np.real(4 * np.arctan(np.lib.scimath.sqrt(E)))
-    print(f"Computed spherical area: min={np.min(A)}, max={np.max(A)}")  
     return A
 
 def perform_spherial_planar_sampling(pos_shpere: np.ndarray, sampling_type: str) -> np.ndarray:
@@ -62,11 +61,11 @@ def perform_spherial_planar_sampling(pos_shpere: np.ndarray, sampling_type: str)
                        np.dot(a2d[:, 1:2], a2[np.newaxis, :]) + \
                        np.dot(a2d[:, 2:3], a3[np.newaxis, :])
 
-    print(f"Projected coordinates: min={np.min(posw)}, max={np.max(posw)}")
+
     return posw
 
 def pad_2d_image(im2):
-    print(f"Before padding: min={np.min(im2)}, max={np.max(im2)}, shape={im2.shape}")
+
 
     im_pad_right = np.flip(np.flip(im2[:, im2.shape[1]//2:], axis=1), axis=0)
     im_pad_left = np.flip(np.flip(im2[:, 0:im2.shape[1]//2], axis=1), axis=0)
@@ -82,10 +81,6 @@ def pad_2d_image(im2):
     right_pad = np.concatenate([im_pad_right_top, im_pad_right, im_pad_right_bottom], axis=0)
     im_padded = np.concatenate([left_pad, im_padded, right_pad], axis=1)
 
-    print(f"After padding: min={np.min(im_padded)}, max={np.max(im_padded)}, shape={im_padded.shape}")
-
-    if np.all(im_padded == 0):
-        print("WARNING: The image is completely black (filled with zeros).")
 
     return im_padded
 
@@ -140,48 +135,43 @@ from PIL import Image
 
 
 def sgim_sampling_wrapper(args):
-    print("Début de sgim_sampling_wrapper avec les arguments :", args)
+
 
     # Process sphere template to get 2D coordinates
     try:
         posw = get_flat_coordinates(args["sphere_template"])
-        print(f"Coordonnées 2D extraites : shape={posw.shape}, preview={posw[:5]}")
+      
     except Exception as e:
-        print("Erreur lors de l'obtention des coordonnées 2D :", e)
+        print("Error :", e)
         raise
 
     # Read feature map
     try:
         feature = read_features(args["feature_map"], args["feat_name"])
-        print(f"Feature map chargée : shape={feature.shape}, preview={feature[:5]}")
+      
     except Exception as e:
-        print("Erreur lors du chargement des features :", e)
+        print("Error loading features :", e)
         raise
 
     # Render 2D image
     try:
         image_array = render_2d_image(posw.T, feature, args["resolution"])
-        print(f"Image 2D rendue : shape={image_array.shape}, dtype={image_array.dtype}, min={np.min(image_array)}, max={np.max(image_array)}")
-    except Exception as e:
-        print("Erreur lors du rendu de l'image 2D :", e)
-        raise
+        
+    
 
     # Padding
     try:
-        image_array = pad_2d_image(image_array)
-        print(f"Image 2D après padding : shape={image_array.shape}, min={np.min(image_array)}, max={np.max(image_array)}")
-        if np.all(image_array == 0):
-            print("ATTENTION : L'image est complètement noire (remplie de zéros).")
+        image_array = pad_2d_image(image_array)      
     except Exception as e:
-        print("Erreur lors du padding de l'image 2D :", e)
+        print("Error during padding :", e)
         raise
 
     # Normalization
     # try:
     #     image_array = normalize(image_array)
-    #     print("Image normalisée : min=", np.min(image_array), "max=", np.max(image_array))
+    #     
     # except Exception as e:
-    #     print("Erreur lors de la normalisation de l'image :", e)
+    #    
     #     raise
     # Convert to image
 
@@ -192,9 +182,9 @@ def sgim_sampling_wrapper(args):
         img_nifti = nib.Nifti1Image(image_array.astype(np.float32), affine=np.eye(4))
         Path(os.path.dirname(nifti_path)).mkdir(parents=True, exist_ok=True)
         nib.save(img_nifti, nifti_path)
-        print(f"Image NIfTI sauvegardée à {nifti_path}")
+        
     except Exception as e:
-        print("Erreur lors de la sauvegarde NIFTI :", e)
+        print("Error save as NIFTI", e)
         raise
 
     # --- PNG SAVE ---
