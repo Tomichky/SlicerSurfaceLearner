@@ -50,15 +50,14 @@ def setProgressBar(qtProgressBarObject, value):
 
 def cli_main(args):
     try:
-        print("Début de cli_main avec les arguments:")
+
         for key, value in args.items():
-            if key != 'file_paths':
-                print(f"{key}: {value}")
+
         
         # Vérification des données
         if not os.path.exists(args["write_dir"]):
             os.makedirs(args["write_dir"])
-            print(f"Création du répertoire {args['write_dir']}")
+
         
         # Vérification des chemins de fichiers
         if 'file_paths' in args and 'CSV_path' in args['file_paths']:
@@ -70,7 +69,7 @@ def cli_main(args):
     
 
         if args["n_folds"] == 1:
-            print("batch_size",args["batch_size"])
+
             data_modules = [
                 GeomCnnDataModule(
                     batch_size=args["batch_size"],
@@ -79,7 +78,6 @@ def cli_main(args):
                 )
             ]
         else:
-            print("batch_size",args["batch_size"])
             data_module_generator = GeomCnnDataModuleKFold(
                 batch_size=args["batch_size"],
                 num_workers=args["data_workers"],
@@ -88,7 +86,7 @@ def cli_main(args):
                 
             )
             data_modules = data_module_generator.get_folds()
-            print(f"Number of folds: {len(data_modules)}")
+   
           
         if args["model"] == "eff_bn":
             backbone = EfficientNetBN(
@@ -119,7 +117,7 @@ def cli_main(args):
         print(f"Backbone architecture: {backbone}")
 
         device = "cuda" if torch.cuda.is_available() and args["use_gpu"] else "cpu"
-        print(f"Using device: {device}")
+       
 
         model = ImageClassifier(backbone,
                                 learning_rate=args["learning_rate"],
