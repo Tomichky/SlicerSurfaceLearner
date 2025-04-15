@@ -48,7 +48,7 @@ def cli_main(args):
     # -----------
     # Data
     # -----------
-    print("ARGSSSSSSSSSSSSSSSSSS",args)
+
     if args["n_folds"] == 1:
         data_modules = [
             GeomCnnDataModule(
@@ -69,9 +69,9 @@ def cli_main(args):
         # ------------
         # model
         # ------------
-    print("Vérification du modèle choisi...")
+
     if args["model"] == "eff_bn":
-        print("EfficientNet choisi.")
+
         backbone = EfficientNetBN(
             model_name="efficientnet-b0",
             in_channels=args["in_channels"],
@@ -79,14 +79,14 @@ def cli_main(args):
             num_classes=2
         )
     elif args["model"] == "densenet":
-        print("DenseNet choisi.")
+
         backbone = DenseNet(
             spatial_dims=2,
             in_channels=args["in_channels"],
             out_channels=2
         )
     elif args["model"] == "resnet":
-        print("SEResNet choisi.")
+
         backbone = SEResNet50(
             spatial_dims=2,
             in_channels=args["in_channels"],
@@ -94,7 +94,7 @@ def cli_main(args):
             pretrained=True
         )
     else:
-        print("SimpleCNN choisi.")
+
         backbone = SimpleCNN(
             in_channels=args["in_channels"],
             w=args["w"]
@@ -102,7 +102,7 @@ def cli_main(args):
 
 # Création du modèle
     try:
-        print("Création du modèle en cours...")
+
         device = "cuda" if torch.cuda.is_available() and args["gpus"] else "cpu"
         model = ImageClassifier(
             backbone,
@@ -113,15 +113,15 @@ def cli_main(args):
             metrics=["acc", "precision", "recall"]
         )
         model=model.to(device)
-        print("Modèle créé :", model)
+
     except Exception as e:
-        print(f"Erreur lors de la création du modèle : {e}")
+        print(f"Error creating the model: {e}")
 
 
     for i in range(args["n_folds"]):
         # logger
-        print("PASSAGE AU LOGGER")
-        print(args["write_dir"])
+
+
         try:
             os.makedirs(os.path.join(args["write_dir"], "logs", args["model"]), exist_ok=True)
             print("Directory created successfully")
@@ -132,23 +132,23 @@ def cli_main(args):
             save_dir=os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i)),
             name=args["exp_name"]
         )
-        print("Après création du logger")
+   
         # early stopping
-        print("Avant creation du early stopping")
+
         es = EarlyStopping(
             monitor='validation/valid_loss',
             patience=30
         )
-        print("apres creation de l'early stopping")
+
         progressBar = LitProgressBar(args["qtProgressBarObject"])
-        print("apres creation de la progress bar")
+
         checkpointer = ModelCheckpoint(
             monitor=args["monitor"],
             save_top_k=args["maxCp"], verbose=True, save_last=False,
             every_n_epochs=args["cp_n_epoch"],
             dirpath=os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i), "checkpoints")
         )
-        print("Apres la creation du checkpoint ")
+
         # ------------
         # training
         # ------------
@@ -162,9 +162,9 @@ def cli_main(args):
                 logger=logger,
                 callbacks=[progressBar, checkpointer, es]
             )
-            print("Le trainer est bien passe")
+
         except Exception as e:
-            print(f"Erreur lors de l'initialisation du Trainer: {e}")
+
             raise
         trainer.fit(model, datamodule=data_modules[i])
         saved_name = os.path.join(args["write_dir"], "logs", args["model"], "fold_" + str(i), "model.pt")
